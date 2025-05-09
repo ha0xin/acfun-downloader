@@ -46,7 +46,7 @@ def download_video(video_url, output_path, title=None, concurrent_fragments=5):
     cmd = [
         "yt-dlp",
         "--no-playlist",
-        "-N", concurrent_fragments,
+        "-N", str(concurrent_fragments),
         "-o", output_path,
         video_url
     ]
