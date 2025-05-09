@@ -3,6 +3,7 @@ import re
 import subprocess
 import argparse
 from pathlib import Path
+import glob
 from tqdm import tqdm
 from src.extractor import AcFunExtractor
 from src.models import Vid
@@ -14,11 +15,38 @@ def sanitize_filename(filename):
     return re.sub(r'[<>:"/\\|?*]', '_', filename)
 
 
-def download_video(video_url, output_path, title=None):
+def check_video_exists(output_path):
+    """检查视频是否已经存在（已下载完成）"""
+    # 获取不含扩展名的基本路径
+    base_path = output_path.replace('.%(ext)s', '')
+    
+    # 检查各种常见视频扩展名
+    for ext in ['mp4', 'mkv', 'webm', 'flv']:
+        if os.path.exists(f"{base_path}.{ext}"):
+            return True, f"{base_path}.{ext}"
+    
+    # 检查同名但扩展名未知的文件
+    # possible_files = glob.glob(f"{base_path}.*")
+    # for file in possible_files:
+    #     # 排除临时文件和下载中的文件
+    #     if not file.endswith(('.part', '.ytdl')) and os.path.isfile(file):
+    #         return True, file
+            
+    return False, None
+
+
+def download_video(video_url, output_path, title=None, concurrent_fragments=5):
     """使用yt-dlp下载单个视频"""
+    # 先检查文件是否已存在
+    exists, file_path = check_video_exists(output_path)
+    if exists:
+        print(f"文件已存在，跳过下载: {file_path}")
+        return True
+        
     cmd = [
         "yt-dlp",
         "--no-playlist",
+        "-N", concurrent_fragments,
         "-o", output_path,
         video_url
     ]
@@ -46,7 +74,7 @@ def download_video(video_url, output_path, title=None):
     return True
 
 
-def download_videos_from_up(uid, output_dir="./downloads", max_videos=None):
+def download_videos_from_up(uid, output_dir="./downloads", max_videos=None, concurrent_fragments=5):
     """批量下载某UP主的所有视频"""
     extractor = AcFunExtractor(use_random_ua=False)
     
@@ -100,7 +128,7 @@ def download_videos_from_up(uid, output_dir="./downloads", max_videos=None):
                     video_url = f"https://www.acfun.cn/v/ac{part_vid}"
                     
                     print(f"  下载分P {part_idx+1}/{len(multi_part_info.part_list)}: {part_title}")
-                    success = download_video(video_url, output_path, title=part_title)
+                    success = download_video(video_url, output_path, title=part_title, concurrent_fragments=concurrent_fragments)
                     
                     if not success:
                         print(f"  分P {part_title} 下载失败，跳过")
@@ -114,7 +142,7 @@ def download_videos_from_up(uid, output_dir="./downloads", max_videos=None):
                 # 构建视频URL
                 video_url = f"https://www.acfun.cn/v/ac{vid}"
                 
-                success = download_video(video_url, output_path, title=title)
+                success = download_video(video_url, output_path, title=title, concurrent_fragments=concurrent_fragments)
                 
                 if not success:
                     print(f"视频 {title} 下载失败，跳过")
@@ -131,7 +159,9 @@ if __name__ == "__main__":
                         help="下载目录 (默认: ./downloads)")
     parser.add_argument("--max", "-m", type=int, default=None,
                         help="最大下载视频数 (默认: 全部)")
+    parser.add_argument("--concurrent-fragments", "-N", type=int, default=5,
+                        help="并发下载的片段数 (默认: 5)")
     
     args = parser.parse_args()
     
-    download_videos_from_up(args.uid, args.output, args.max)
+    download_videos_from_up(args.uid, args.output, args.max, args.concurrent_fragments)
